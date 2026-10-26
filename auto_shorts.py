@@ -32,7 +32,8 @@ scenes = [
 ]
 
 async def generate_tts(text, output_filename):
-    communicate = edge_tts.Communicate(text, "ko-KR-InJoonNeural", rate="+15%", pitch="-5Hz")
+    # 음성 속도와 피치를 가장 자연스러운 한국어 톤으로 조정
+    communicate = edge_tts.Communicate(text, "ko-KR-InJoonNeural", rate="+5%", pitch="0Hz")
     await communicate.save(output_filename)
 
 def create_scene_image(subtitle, output_path):
@@ -40,22 +41,31 @@ def create_scene_image(subtitle, output_path):
     img = Image.new('RGB', (1080, 1920), color=(15, 15, 25))
     draw = ImageDraw.Draw(img)
     
-    # 우분투 환경에서도 기본 지원되는 폰트 또는 기본 폰트 대체 적용
+    # 깃허브 액션 환경에 다운로드한 나눔고딕 폰트 적용 (깨짐 방지)
+    font_path = "NanumGothicBold.ttf"
     try:
-        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 55)
+        font = ImageFont.truetype(font_path, 50)
     except:
-        try:
-            font = ImageFont.truetype("DejaVuSans-Bold.ttf", 55)
-        except:
-            font = ImageFont.load_default()
+        font = ImageFont.load_default()
         
-    # 텍스트 줄바꿈 및 중앙 배치 시뮬레이션
+    # 자막 위치 중앙 배치
     draw.text((80, 900), subtitle, fill=(255, 255, 255), font=font)
     img.save(output_path)
 
 async def main():
     os.makedirs("output", exist_ok=True)
-    print("집사연구소 101번 상품 쇼츠 안정적 렌더링 시작...")
+    
+    # 1. 한글 폰트(나눔고딕)가 서버에 없으면 자동으로 다운로드 받기
+    font_path = "NanumGothicBold.ttf"
+    if not os.path.exists(font_path):
+        print("한글 폰트 다운로드 중...")
+        subprocess.run([
+            "curl", "-L", 
+            "https://github.com/google/fonts/raw/main/ofl/nanumgothic/NanumGothic-Bold.ttf", 
+            "-o", font_path
+        ])
+
+    print("집사연구소 쇼츠 고품질 렌더링 시작...")
     
     video_inputs = []
     
@@ -64,13 +74,13 @@ async def main():
         image_file = f"output/scene_{i}.png"
         scene_video = f"output/scene_{i}.mp4"
         
-        # 1. 오디오 생성
+        # 2. 자연스러운 TTS 오디오 생성
         await generate_tts(scene["text"], audio_file)
         
-        # 2. 이미지 생성
+        # 3. 깨지지 않는 한글 자막 이미지 생성
         create_scene_image(scene["subtitle"], image_file)
         
-        # 3. 이미지와 오디오 결합 클립 생성 (오디오 길이에 맞춤)
+        # 4. 이미지 + 오디오 결합 클립 생성
         cmd_clip = [
             "ffmpeg", "-y", "-loop", "1", "-i", image_file, "-i", audio_file,
             "-c:v", "libx264", "-tune", "stillimage", "-c:a", "aac", "-b:a", "192k",
@@ -79,22 +89,21 @@ async def main():
         subprocess.run(cmd_clip, check=True)
         video_inputs.append(scene_video)
 
-    # 4. 병합 리스트 작성
+    # 5. 병합 리스트 작성
     concat_list_path = "output/concat_list.txt"
     with open(concat_list_path, "w", encoding="utf-8") as f:
         for v in video_inputs:
-            # 절대 경로 또는 파일명 기재
             filename = os.path.basename(v)
             f.write(f"file '{filename}'\n")
             
-    # 5. 최종 쇼츠 영상 병합 (output 폴더 안에서 실행)
+    # 6. 최종 영상 병합
     final_video = "output/zipsa_shorts_101.mp4"
     cmd_concat = [
         "ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", "concat_list.txt",
         "-c", "copy", "zipsa_shorts_101.mp4"
     ]
     subprocess.run(cmd_concat, cwd="output", check=True)
-    print("최종 쇼츠 영상 렌더링 및 아티팩트 준비 완료:", final_video)
+    print("완벽한 쇼츠 영상 렌더링 완료:", final_video)
 
 if __name__ == "__main__":
     asyncio.run(main())
