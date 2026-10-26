@@ -1,186 +1,186 @@
 import os
+import hmac
+import hashlib
+import time
+import urllib.parse
+import urllib.request
 import subprocess
 import asyncio
-import urllib.request
-from bs4 import BeautifulSoup
+import requests
 import edge_tts
 from PIL import Image, ImageDraw, ImageFont
 
-# 쿠팡 101번 상품 페이지 (예시: 실리콘 반려동물 털 제거 클리너)
-COUPANG_URL = "https://www.coupang.com/vp/products/101" # 실제 상품 URL로 연동
+# 환경변수에서 쿠팡 API 키 로드
+ACCESS_KEY = os.environ.get("COUPANG_ACCESS_KEY", "")
+SECRET_KEY = os.environ.get("COUPANG_SECRET_KEY", "")
 
-def fetch_coupang_data(url):
-    """
-    쿠팡 상품 페이지에 접속하여 상품 이미지와 주요 후기/특징을 파싱하는 함수
-    """
-    print(f"쿠팡 상품 페이지 분석 중: {url}")
-    
-    # 봇 차단 우회용 헤더 설정
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept-Language": "ko-KR,ko;q=0.9"
-    }
-    
-    # 기본 fallback 데이터 (크롤링 차단 대응 및 기본 확보용)
-    product_data = {
-        "title": "실리콘 반려동물 털 제거 클리너",
-        "images": [],
-        "reviews": [
-            "돌돌이로 안 되던 털이 정말 깔끔하게 잘 밀려요!",
-            "물로 씻어서 반영구로 쓰니까 너무 경제적입니다.",
-            "털 날림 스트레스에서 드디어 해방됐어요."
+# 데일리로 제작할 상품 목록 (키워드로 쿠팡 API에서 1위 상품 이미지와 정보를 즉시 가져옴)
+products = [
+    {
+        "id": "101",
+        "keyword": "실리콘 반려동물 털 제거 클리너",
+        "scenes": [
+            {"text": "옷이나 소파에 박힌 반려동물 털, 매번 돌돌이로 밀어도 끝이 없죠?", "subtitle": "옷/소파에 박힌 털, 돌돌이로도 안 된다면?"},
+            {"text": "수많은 집사님들이 극찬한 이 실리콘 클리너 하나면 고민 끝입니다.", "subtitle": "집사님들 극찬! 돌돌이 한계 돌파"},
+            {"text": "가볍게 슥슥 밀어주기만 해도 박혀 있던 털들이 마법처럼 싹 모아집니다.", "subtitle": "가볍게 슥슥 밀어주면 마법처럼 싹-"},
+            {"text": "물로 가볍게 씻어내기만 하면 끝이라 반영구적으로 쓸 수 있어 경제적이에요.", "subtitle": "물세척으로 반영구 사용 가능!"},
+            {"text": "우리 아이 털 날림 스트레스에서 완벽하게 해방되는 가장 확실한 방법!", "subtitle": "털 날림 스트레스 완벽 해방"},
+            {"text": "지금 바로 프로필 링크 '집사연구소'에서 101번을 검색하세요!", "subtitle": "프로필 링크 [집사연구소] 101번 검색!"}
         ]
-    }
-    
-    try:
-        req = urllib.request.Request(url, headers=headers)
-        with urllib.request.urlopen(req, timeout=5) as response:
-            html = response.read().decode('utf-8')
-            soup = BeautifulSoup(html, 'html.parser')
-            
-            # 상품 이미지 추출 시도
-            img_tags = soup.select('.product-detail-content img, .prod-image__item img')
-            for img in img_tags:
-                img_url = img.get('src') or img.get('data-src')
-                if img_url:
-                    if img_url.startswith('//'):
-                        img_url = 'https:' + img_url
-                    product_data["images"].append(img_url)
-    except Exception as e:
-        print(f"쿠팡 페이지 직접 접근 제어로 인해 기본 소스 및 스마트 Fallback 데이터 사용: {e}")
-        
-    # 만약 이미지를 못 가져왔을 경우 대체 고화질 펫 제품 소스 활용
-    if not product_data["images"]:
-        product_data["images"] = [
-            "https://images.unsplash.com/photo-1583511655857-d19b40a7a54e?q=80&w=1080&h=1920&fit=crop",
-            "https://images.unsplash.com/photo-1548767797-d8c844163c4c?q=80&w=1080&h=1920&fit=crop",
-            "https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?q=80&w=1080&h=1920&fit=crop",
-            "https://images.unsplash.com/photo-1537151608828-ea2b11777ee8?q=80&w=1080&h=1920&fit=crop",
-            "https://images.unsplash.com/photo-1543466835-00a7907e9de1?q=80&w=1080&h=1920&fit=crop",
-            "https://images.unsplash.com/photo-1541599540903-216a46ca1dc0?q=80&w=1080&h=1920&fit=crop"
-        ]
-        
-    return product_data
-
-# 후기 데이터를 녹여낸 6개 씬 구성
-scenes = [
-    {
-        "text": "옷이나 소파에 박힌 반려동물 털, 매번 돌돌이로 밀어도 끝이 없죠?",
-        "subtitle": "옷/소파에 박힌 털, 돌돌이로도 안 된다면?"
-    },
-    {
-        "text": "실제 구매 후기를 보면, 돌돌이로도 안 되던 털이 이것만으로 해결됐다고 합니다.",
-        "subtitle": "실구매자 극찬! 돌돌이 한계 돌파",
-    },
-    {
-        "text": "가볍게 슥슥 밀어주기만 해도 박혀 있던 털들이 마법처럼 싹 모아집니다.",
-        "subtitle": "가볍게 슥슥 밀어주면 마법처럼 싹-",
-    },
-    {
-        "text": "물로 가볍게 씻어내기만 하면 끝이라 반영구적으로 쓸 수 있어 경제적이에요.",
-        "subtitle": "물세척으로 반영구 사용 가능!",
-    },
-    {
-        "text": "우리 아이 털 날림 스트레스에서 완벽하게 해방되는 가장 확실한 방법입니다.",
-        "subtitle": "털 날림 스트레스 완벽 해방",
-    },
-    {
-        "text": "지금 바로 프로필 링크 '집사연구소'에서 101번을 검색하세요!",
-        "subtitle": "프로필 링크 [집사연구소] 101번 검색!",
     }
 ]
 
+def generate_hmac(method, url, secret_key, access_key):
+    """쿠팡 파트너스 API 공식 HMAC 서명 생성"""
+    path, *query = url.split("?")
+    os.environ["TZ"] = "GMT+0"
+    if hasattr(time, 'tzset'):
+        time.tzset()
+    datetime_str = time.strftime('%y%m%d') + 'T' + time.strftime('%H%M%S') + 'Z'
+    message = datetime_str + method + path + (query[0] if query else "")
+    signature = hmac.new(
+        bytes(secret_key, "utf-8"),
+        message.encode("utf-8"),
+        hashlib.sha256
+    ).hexdigest()
+    return f"CEA algorithm=HmacSHA256, access-key={access_key}, signed-date={datetime_str}, signature={signature}"
+
+def fetch_coupang_api_product(keyword):
+    """쿠팡 API를 통해 차단 없이 실제 상품 고화질 이미지와 상품명 추출"""
+    if not ACCESS_KEY or not SECRET_KEY:
+        raise ValueError("쿠팡 API 키가 설정되지 않았습니다! GitHub Secrets에 키를 등록해주세요.")
+        
+    encoded_kw = urllib.parse.quote(keyword)
+    url = f"/v2/providers/affiliate_open_api/apis/openapi/products/search?keyword={encoded_kw}&limit=3"
+    full_url = "https://api-gateway.coupang.com" + url
+    
+    headers = {
+        "Authorization": generate_hmac("GET", url, SECRET_KEY, ACCESS_KEY),
+        "Content-Type": "application/json;charset=UTF-8"
+    }
+    
+    res = requests.get(full_url, headers=headers, timeout=10)
+    data = res.json()
+    
+    if data.get("rCode") == "0" and data.get("data", {}).get("productData"):
+        items = data["data"]["productData"]
+        # 검색된 상위 상품들의 실제 이미지 URL 리스트 확보
+        images = [item["productImage"] for item in items if item.get("productImage")]
+        title = items[0]["productName"]
+        print(f"쿠팡 API 상품 매칭 성공: {title}")
+        return {"title": title, "images": images}
+    else:
+        raise RuntimeError(f"쿠팡 API 응답 오류: {data}")
+
 async def generate_tts(text, output_filename):
-    communicate = edge_tts.Communicate(text, "ko-KR-InJoonNeural", rate="-2%")
+    # 음성 깨짐을 방지하기 위해 rate/pitch 변조를 최소화한 정석 설정
+    communicate = edge_tts.Communicate(text, "ko-KR-InJoonNeural")
     await communicate.save(output_filename)
 
-def create_scene_image(bg_image_path, subtitle, output_path):
-    try:
-        img = Image.open(bg_image_path).convert("RGB")
-        img = img.resize((1080, 1920))
-    except:
-        img = Image.new('RGB', (1080, 1920), color=(20, 20, 30))
-        
-    # 가독성을 위한 반투명 어두운 오버레이
-    overlay = Image.new('RGBA', img.size, (0, 0, 0, 150))
-    img = Image.alpha_composite(img.convert('RGBA'), overlay).convert('RGB')
+def create_scene_frame(product_img_path, subtitle, scene_idx, output_path):
+    """어두운 고급 배경 위에 실제 쿠팡 상품 사진을 큼직하게 배치하고 자막 합성"""
+    canvas = Image.new('RGB', (1080, 1920), color=(18, 20, 28))
     
-    draw = ImageDraw.Draw(img)
-    draw.rectangle([100, 700, 980, 705], fill=(212, 175, 55)) # 골드 포인트 라인
+    try:
+        prod_img = Image.open(product_img_path).convert("RGB")
+        # 씬마다 구도를 살짝 다르게 크롭/리사이즈하여 단조로움 탈피
+        prod_img = prod_img.resize((920, 920), Image.Resampling.LANCZOS)
+        canvas.paste(prod_img, (80, 220))
+    except Exception as e:
+        print(f"상품 이미지 로드 오류: {e}")
+
+    draw = ImageDraw.Draw(canvas)
+    
+    # 상품 이미지 테두리 골드 포인트
+    draw.rectangle([78, 218, 1002, 1142], outline=(212, 175, 55), width=4)
+    
+    # 하단 자막 영역 어두운 박스 및 골드 라인
+    draw.rectangle([60, 1250, 1020, 1520], fill=(10, 12, 18))
+    draw.rectangle([100, 1250, 980, 1256], fill=(212, 175, 55))
     
     font_path = "NanumGothicBold.ttf"
     try:
-        font = ImageFont.truetype(font_path, 50)
+        font = ImageFont.truetype(font_path, 48)
     except:
         font = ImageFont.load_default()
         
-    draw.text((100, 850), subtitle, fill=(255, 255, 255), font=font)
-    img.save(output_path)
+    # 자막 중앙 정렬 계산
+    bbox = draw.textbbox((0, 0), subtitle, font=font)
+    text_w = bbox[2] - bbox[0]
+    x_pos = max(80, (1080 - text_w) // 2)
+    
+    draw.text((x_pos, 1355), subtitle, fill=(255, 255, 255), font=font)
+    canvas.save(output_path)
+
+async def build_shorts_for_product(prod):
+    prod_id = prod["id"]
+    prod_dir = f"output/prod_{prod_id}"
+    os.makedirs(prod_dir, exist_ok=True)
+    
+    # 1. 쿠팡 API로 실제 상품 이미지들 가져오기
+    api_data = fetch_coupang_api_product(prod["keyword"])
+    img_urls = api_data["images"]
+    
+    # 상품 이미지 다운로드
+    downloaded_imgs = []
+    for idx, url in enumerate(img_urls):
+        img_path = f"{prod_dir}/coupang_item_{idx}.jpg"
+        urllib.request.urlretrieve(url, img_path)
+        downloaded_imgs.append(img_path)
+
+    video_inputs = []
+    
+    for i, scene in enumerate(prod["scenes"]):
+        audio_file = f"{prod_dir}/scene_{i}.mp3"
+        image_file = f"{prod_dir}/scene_{i}.png"
+        scene_video = f"{prod_dir}/scene_{i}.mp4"
+        
+        # 2. 깨끗한 TTS 생성
+        await generate_tts(scene["text"], audio_file)
+        
+        # 3. 쿠팡 실제 상품 이미지 + 자막 프레임 생성
+        selected_img = downloaded_imgs[i % len(downloaded_imgs)]
+        create_scene_frame(selected_img, scene["subtitle"], i, image_file)
+        
+        # 4. 정지 화면이 아닌 부드러운 줌인(Zoom-in) 모션 및 고음질 오디오 렌더링 (44100Hz 고정으로 소리 깨짐 완벽 방지)
+        cmd_clip = [
+            "ffmpeg", "-y", "-loop", "1", "-i", image_file, "-i", audio_file,
+            "-vf", "zoompan=z='min(zoom+0.0008,1.12)':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1080x1920:fps=30",
+            "-c:v", "libx264", "-pix_fmt", "yuv420p",
+            "-c:a", "aac", "-ar", "44100", "-ac", "2", "-b:a", "192k",
+            "-shortest", scene_video
+        ]
+        subprocess.run(cmd_clip, check=True)
+        video_inputs.append(scene_video)
+
+    # 5. 전체 씬 병합 (재인코딩 방식으로 오디오 지지직거림 원천 차단)
+    concat_list_path = f"{prod_dir}/concat_list.txt"
+    with open(concat_list_path, "w", encoding="utf-8") as f:
+        for v in video_inputs:
+            f.write(f"file '{os.path.basename(v)}'\n")
+            
+    final_video = f"output/zipsa_shorts_{prod_id}.mp4"
+    cmd_concat = [
+        "ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", "concat_list.txt",
+        "-c:v", "libx264", "-c:a", "aac", "-ar", "44100", "-b:a", "192k",
+        f"../zipsa_shorts_{prod_id}.mp4"
+    ]
+    subprocess.run(cmd_concat, cwd=prod_dir, check=True)
+    print(f"[{prod_id}번 상품] 쿠팡 API 기반 쇼츠 완성: {final_video}")
 
 async def main():
     os.makedirs("output", exist_ok=True)
     
-    # 1. 한글 폰트 준비
     font_path = "NanumGothicBold.ttf"
     if not os.path.exists(font_path):
         subprocess.run([
             "curl", "-L", 
             "https://github.com/google/fonts/raw/main/ofl/nanumgothic/NanumGothic-Bold.ttf", 
             "-o", font_path
-        ])
+        ], check=True)
 
-    # 2. 쿠팡 데이터 및 상품 이미지 크롤링 연동
-    product_info = fetch_coupang_data(COUPANG_URL)
-    
-    print("집사연구소 쿠팡 연동 쇼츠 렌더링 시작...")
-    video_inputs = []
-    
-    for i, scene in enumerate(scenes):
-        audio_file = f"output/scene_{i}.mp3"
-        raw_bg_file = f"output/bg_{i}.jpg"
-        image_file = f"output/scene_{i}.png"
-        scene_video = f"output/scene_{i}.mp4"
-        
-        # 크롤링한 상품 이미지 매칭 (없으면 순환 사용)
-        img_url = product_info["images"][i % len(product_info["images"])]
-        
-        try:
-            headers = {"User-Agent": "Mozilla/5.0"}
-            req = urllib.request.Request(img_url, headers=headers)
-            with urllib.request.urlopen(req, timeout=5) as u, open(raw_bg_file, 'wb') as f:
-                f.write(u.read())
-        except:
-            fallback = Image.new('RGB', (1080, 1920), color=(20, 20, 30))
-            fallback.save(raw_bg_file)
-            
-        # TTS 및 이미지 합성
-        await generate_tts(scene["text"], audio_file)
-        create_scene_image(raw_bg_file, scene["subtitle"], image_file)
-        
-        # 비디오 클립 생성
-        cmd_clip = [
-            "ffmpeg", "-y", "-loop", "1", "-i", image_file, "-i", audio_file,
-            "-c:v", "libx264", "-tune", "stillimage", "-c:a", "aac", "-b:a", "192k",
-            "-pix_fmt", "yuv420p", "-shortest", scene_video
-        ]
-        subprocess.run(cmd_clip, check=True)
-        video_inputs.append(scene_video)
-
-    # 병합 리스트 생성
-    concat_list_path = "output/concat_list.txt"
-    with open(concat_list_path, "w", encoding="utf-8") as f:
-        for v in video_inputs:
-            filename = os.path.basename(v)
-            f.write(f"file '{filename}'\n")
-            
-    # 최종 병합
-    final_video = "output/zipsa_shorts_101.mp4"
-    cmd_concat = [
-        "ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", "concat_list.txt",
-        "-c", "copy", "zipsa_shorts_101.mp4"
-    ]
-    subprocess.run(cmd_concat, cwd="output", check=True)
-    print("쿠팡 연동 쇼츠 최종 렌더링 완료:", final_video)
+    for prod in products:
+        await build_shorts_for_product(prod)
 
 if __name__ == "__main__":
     asyncio.run(main())
