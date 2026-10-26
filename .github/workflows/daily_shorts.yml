@@ -30,3 +30,9 @@ jobs:
       - name: Run automated shorts script
         run: |
           python auto_shorts.py
+
+      - name: Upload Shorts Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: shorts-video-101
+          path: output/zipsa_shorts_101.mp4
