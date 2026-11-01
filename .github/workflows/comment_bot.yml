@@ -1,0 +1,39 @@
+name: Comment Auto Reply
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "답글을 달지 않고 대상만 확인"
+        type: boolean
+        default: true
+  schedule:
+    - cron: '20 * * * *'   # 매시 20분 (UTC 기준이지만 매시간이라 시간대와 무관)
+
+concurrency:
+  group: comment-bot
+  cancel-in-progress: false
+
+jobs:
+  reply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - run: pip install requests
+
+      - name: Run comment bot
+        env:
+          YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
+          YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
+          YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.dry_run }}" = "true" ]; then
+            python comment_bot/auto_reply.py --dry-run
+          else
+            python comment_bot/auto_reply.py
+          fi

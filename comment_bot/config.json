@@ -1,0 +1,12 @@
+{
+  "lookback_hours": 48,
+  "rules": [
+    {
+      "name": "유튜브 안내 링크",
+      "keywords": ["유튜브", "youtube"],
+      "link": "",
+      "reply": "댓글 감사합니다! 🐾 요청하신 안내 링크 보내드려요 👉 {link}"
+    }
+  ],
+  "ignore_authors": []
+}

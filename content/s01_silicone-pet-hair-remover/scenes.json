@@ -1,0 +1,67 @@
+{
+  "slug": "s01_silicone-pet-hair-remover",
+  "fps": 30,
+  "voice": "ko-KR-InJoonNeural",
+  "rate": "+5%",
+  "scenes": [
+    {
+      "type": "cover",
+      "headline": "털 지옥 탈출",
+      "subline": "돌돌이 말고 이거 하나",
+      "highlight": "털 지옥",
+      "narration": "요즘 털 폭탄, 우리 집만 이래요?",
+      "subtitle": "요즘 **털 폭탄** 우리 집만?",
+      "durationInFrames": 75
+    },
+    {
+      "type": "problem",
+      "icon": "🧻",
+      "caption": "테이프로는 표면 털만",
+      "narration": "돌돌이로 밀어도 섬유 속에 박힌 털은 그대로 남죠.",
+      "subtitle": "돌돌이로는 **박힌 털** 그대로",
+      "durationInFrames": 105
+    },
+    {
+      "type": "product",
+      "label": "실리콘 털 클리너",
+      "narration": "그럴 땐 테이프 말고 실리콘 클리너를 써 보세요.",
+      "subtitle": "테이프 말고 **실리콘**",
+      "durationInFrames": 100
+    },
+    {
+      "type": "point",
+      "index": 1,
+      "title": "한 방향으로 슥슥",
+      "detail": "박힌 털이 한 줄로",
+      "narration": "한 방향으로 슥슥 밀면 박힌 털이 한 줄로 모여요.",
+      "subtitle": "슥슥 밀면 **한 줄로** 모여요",
+      "durationInFrames": 100
+    },
+    {
+      "type": "point",
+      "index": 2,
+      "title": "소모품 0",
+      "detail": "테이프 리필 필요 없음",
+      "narration": "테이프처럼 버릴 게 없어서 계속 다시 쓰면 돼요.",
+      "subtitle": "버릴 게 없는 **재사용**",
+      "durationInFrames": 100
+    },
+    {
+      "type": "point",
+      "index": 3,
+      "title": "어디든 하나로",
+      "detail": "소파 · 니트 · 차 시트",
+      "narration": "소파, 니트, 차 시트까지 하나로 정리 끝.",
+      "subtitle": "소파·니트·차 시트 **하나로**",
+      "durationInFrames": 90
+    },
+    {
+      "type": "cta",
+      "productNumber": "101",
+      "channelName": "집사연구소",
+      "narration": "털갈이 끝나기 전에, 프로필 링크 집사연구소에서 101번!",
+      "subtitle": "프로필 링크 **101번** 검색",
+      "durationInFrames": 110
+    }
+  ]
+}
