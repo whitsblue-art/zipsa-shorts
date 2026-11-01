@@ -44,9 +44,15 @@ SAMPLE_SCRIPT: dict = {
 }
 SAMPLE_DURATION = 15.0
 
+SAMPLE_METADATA = {
+    "youtube_title": "자는 줄 알았는데? 새끼가 위험하자 어미의 놀라운 반응 #shorts #동물",
+    "youtube_description": "잠든 줄만 알았던 어미가 아기가 위험해지자 빛의 속도로 반응하는 순간",
+    "tags": ["동물쇼츠", "모성애", "해외동물", "귀여운동물", "shorts"],
+}
+
 PROMPT = """너는 구독자 100만 유튜브 쇼츠 채널 '해외 바이럴 동물/밈 큐레이션'의 메인 작가야.
 첨부된 해외 바이럴 영상(길이 {duration:.1f}초)을 보고 한국 시청자용 쇼츠 기획안을 JSON으로만 출력해.
-
+{context}
 [작성 규칙]
 1. top_title: 영상 내내 상단에 고정되는 2줄 훅 타이틀. 각 줄 12자 이내.
    핵심 키워드는 ASS 태그로 노란색 강조: {{\\\\c&H00D7FF&}}키워드{{\\\\c&HFFFFFF&}} (JSON 문자열 안이므로 역슬래시 2개)
@@ -59,9 +65,11 @@ PROMPT = """너는 구독자 100만 유튜브 쇼츠 채널 '해외 바이럴 �
    appear_at은 영상 중반부부터 시간차를 두고 오름차순 (예: 길이의 30%, 55%, 80% 지점).
    likes는 "2.3천", "1.1만", "794" 같은 한국 유튜브 표기.
 4. 영상에 실제로 나오는 장면과 타이밍에 정확히 맞출 것. 과장된 거짓 정보 금지.
+5. metadata: 업로드용 한국어 제목(40자 이내, 끝에 #shorts), 설명 1~2문장, 태그 5~8개.
 
 [출력 JSON 스키마]
 {{
+  "metadata": {{"youtube_title": "... #shorts", "youtube_description": "...", "tags": ["..."]}},
   "top_title": {{"line1": "...", "line2": "..."}},
   "subtitles": [{{"start": 0.0, "end": 3.0, "type": "narration", "text": "..."}},
                 {{"start": 1.5, "end": 4.0, "type": "thought", "color": "green", "text": "* ... *"}}],
@@ -91,6 +99,19 @@ def _extract_json(text: str) -> dict:
     return json.loads(text[start:end + 1])
 
 
+def _norm_metadata(meta) -> dict:
+    meta = meta if isinstance(meta, dict) else {}
+    title = str(meta.get("youtube_title") or SAMPLE_METADATA["youtube_title"]).strip()
+    if "#shorts" not in title.lower():
+        title = f"{title} #shorts"
+    tags = meta.get("tags") if isinstance(meta.get("tags"), list) else SAMPLE_METADATA["tags"]
+    return {
+        "youtube_title": title[:100],  # YouTube 제목 최대 100자
+        "youtube_description": str(meta.get("youtube_description") or SAMPLE_METADATA["youtube_description"]),
+        "tags": [str(t).lstrip("#") for t in tags][:15],
+    }
+
+
 def normalize_script(data: dict, duration: float, video_file: str, bgm_file: str) -> dict:
     """AI 응답을 렌더러가 안전하게 쓸 수 있도록 검증/보정."""
     out = {
@@ -104,6 +125,7 @@ def normalize_script(data: dict, duration: float, video_file: str, bgm_file: str
         },
         "subtitles": [],
         "comments": [],
+        "metadata": _norm_metadata(data.get("metadata")),
     }
     if not out["top_title"]["line1"] and not out["top_title"]["line2"]:
         out["top_title"] = copy.deepcopy(SAMPLE_SCRIPT["top_title"])
@@ -152,12 +174,12 @@ def _extract_frames(video: Path, duration: float) -> list[Path]:
     return sorted(fdir.glob("frame_*.jpg"))
 
 
-def _call_gemini(video: Path, duration: float, api_key: str) -> dict:
+def _call_gemini(video: Path, duration: float, api_key: str, context: str = "") -> dict:
     from google import genai
     from google.genai import types
 
     client = genai.Client(api_key=api_key)
-    prompt = PROMPT.format(duration=duration)
+    prompt = PROMPT.format(duration=duration, context=context)
     config = types.GenerateContentConfig(response_mime_type="application/json", temperature=0.9)
 
     contents: list
@@ -189,7 +211,8 @@ def _call_gemini(video: Path, duration: float, api_key: str) -> dict:
 
 
 def generate_script(video_file: str = "input/source.mp4", bgm_file: str = "input/bgm.mp3",
-                    out_path: Path = SCRIPT_PATH, offline: bool = False) -> dict:
+                    out_path: Path = SCRIPT_PATH, offline: bool = False,
+                    source_title: str = "") -> dict:
     video = resolve(video_file)
     duration = media_duration(video)
     api_key = os.environ.get("GEMINI_API_KEY", "").strip()
@@ -199,7 +222,8 @@ def generate_script(video_file: str = "input/source.mp4", bgm_file: str = "input
     else:
         for attempt in range(2):
             try:
-                data = _call_gemini(video, duration, api_key)
+                ctx = f"(원본 제목 참고: {source_title})\n" if source_title else ""
+                data = _call_gemini(video, duration, api_key, ctx)
                 break
             except Exception as e:
                 print(f"[ai] Gemini 호출 실패 ({attempt + 1}/2): {e}")

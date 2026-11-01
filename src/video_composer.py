@@ -102,6 +102,14 @@ def compose(script: dict, output: str | Path = OUTPUT_DIR / "final_shorts.mp4",
         args += ["-stream_loop", "-1", "-i", str(bgm)]
         idx_bgm = next_idx
         next_idx += 1
+    # TTS 나레이션 (선택): [{"file": "temp/tts_1.mp3", "start": 0.0}, ...]
+    voice_inputs = []
+    for vo in script.get("voiceover", []) or []:
+        vf = resolve(vo.get("file", ""))
+        if vf.is_file():
+            args += ["-i", str(vf)]
+            voice_inputs.append((next_idx, max(0.0, float(vo.get("start", 0)) / speed)))
+            next_idx += 1
     card_inputs = []
     for path, _, _ in placed:
         args += ["-loop", "1", "-framerate", str(FPS), "-t", D, "-i", str(path)]
@@ -139,15 +147,26 @@ def compose(script: dict, output: str | Path = OUTPUT_DIR / "final_shorts.mp4",
     src_vol = float(script.get("source_volume", 1.0))
     bgm_vol = float(script.get("bgm_volume", 0.25))
     fade_st = max(0.0, duration - 1.0)
+    voice_vol = float(script.get("voice_volume", 1.0))
+    if voice_inputs:  # 나레이션이 있으면 원본/BGM 볼륨을 낮춰 목소리가 잘 들리게
+        src_vol *= float(script.get("duck_ratio", 0.45))
+        bgm_vol *= float(script.get("duck_ratio", 0.45))
     a_parts = []
     if has_audio(video):
-        f.append(f"[1:a]aresample=44100,atempo={speed},volume={src_vol}[asrc]")
+        f.append(f"[1:a]aresample=44100,atempo={speed},volume={src_vol:.3f},"
+                 f"aformat=channel_layouts=stereo[asrc]")
         a_parts.append("[asrc]")
     if idx_bgm is not None:
-        f.append(f"[{idx_bgm}:a]aresample=44100,volume={bgm_vol}[abgm]")
+        f.append(f"[{idx_bgm}:a]aresample=44100,volume={bgm_vol:.3f},aformat=channel_layouts=stereo[abgm]")
         a_parts.append("[abgm]")
-    if len(a_parts) == 2:
-        f.append("[asrc][abgm]amix=inputs=2:duration=longest:dropout_transition=0:normalize=0[amix]")
+    for n, (inp, st) in enumerate(voice_inputs, start=1):
+        ms = int(st * 1000)
+        f.append(f"[{inp}:a]aresample=44100,aformat=channel_layouts=stereo,volume={voice_vol},"
+                 f"adelay={ms}|{ms}[avo{n}]")
+        a_parts.append(f"[avo{n}]")
+    if len(a_parts) >= 2:
+        f.append("".join(a_parts) + f"amix=inputs={len(a_parts)}:duration=longest:"
+                 "dropout_transition=0:normalize=0[amix]")
         a_in = "[amix]"
     elif len(a_parts) == 1:
         a_in = a_parts[0]

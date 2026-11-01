@@ -3,12 +3,17 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .utils import INPUT_DIR, require_binary
+from .utils import INPUT_DIR, media_duration, require_binary, run_ffmpeg
 
 SOURCE_PATH = INPUT_DIR / "source.mp4"
 
 
 def download(url: str, out_path: Path = SOURCE_PATH) -> Path:
+    return download_with_info(url, out_path)[0]
+
+
+def download_with_info(url: str, out_path: Path = SOURCE_PATH) -> tuple[Path, dict]:
+    """다운로드 후 (경로, 원본 정보{id,title,uploader,webpage_url,extractor}) 반환."""
     import yt_dlp
 
     require_binary("ffmpeg")  # 영상+오디오 병합에 필요
@@ -32,7 +37,11 @@ def download(url: str, out_path: Path = SOURCE_PATH) -> Path:
     }
     print(f"[download] {url}")
     with yt_dlp.YoutubeDL(opts) as ydl:
-        ydl.download([url])
+        raw = ydl.extract_info(url, download=True) or {}
+    if raw.get("_type") == "playlist" and raw.get("entries"):
+        raw = next((e for e in raw["entries"] if e), raw)
+    info = {k: raw.get(k) for k in ("id", "title", "uploader", "webpage_url", "extractor_key")}
+    info["webpage_url"] = info.get("webpage_url") or url
 
     cands = [p for p in out_path.parent.glob(stem.name + ".*") if not p.name.endswith((".part", ".ytdl"))]
     mp4 = [p for p in cands if p.suffix.lower() == ".mp4"]
@@ -42,4 +51,18 @@ def download(url: str, out_path: Path = SOURCE_PATH) -> Path:
     for left in out_path.parent.glob(stem.name + ".*"):
         left.unlink(missing_ok=True)
     print(f"[download] 저장 완료: {out_path}")
-    return out_path
+    return out_path, info
+
+
+def trim_source(path: Path = SOURCE_PATH, max_sec: float = 30.0) -> float:
+    """max_sec보다 길면 앞부분만 잘라 H.264/AAC로 정규화. 최종 길이(초) 반환."""
+    dur = media_duration(path)
+    if max_sec and dur > max_sec + 0.1:
+        tmp = path.with_name(path.stem + "_trim.mp4")
+        print(f"[download] {dur:.1f}초 → {max_sec:.0f}초로 컷")
+        run_ffmpeg(["-i", str(path), "-t", f"{max_sec}", "-map", "0:v:0", "-map", "0:a:0?",
+                    "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p",
+                    "-c:a", "aac", "-b:a", "192k", "-ar", "44100", str(tmp)], desc="trim")
+        tmp.replace(path)
+        dur = media_duration(path)
+    return dur

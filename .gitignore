@@ -11,3 +11,8 @@ assets/bg/*
 !assets/bg/.gitkeep
 assets/fonts/*
 !assets/fonts/.gitkeep
+# 업로드 인증 정보·처리 이력 (절대 커밋 금지)
+data/*
+!data/.gitkeep
+assets/bgm/*
+!assets/bgm/.gitkeep
