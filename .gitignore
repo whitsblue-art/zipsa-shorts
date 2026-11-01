@@ -1,0 +1,13 @@
+.env
+__pycache__/
+*.pyc
+input/*
+!input/.gitkeep
+temp/*
+!temp/.gitkeep
+output/*
+!output/.gitkeep
+assets/bg/*
+!assets/bg/.gitkeep
+assets/fonts/*
+!assets/fonts/.gitkeep
