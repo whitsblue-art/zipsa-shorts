@@ -3,7 +3,7 @@ google-genai
 Pillow
 python-dotenv
 requests
-# 선택 기능
-edge-tts                    # --tts 나레이션
+# optional features
+edge-tts                    # --tts narration
 google-api-python-client    # --upload
 google-auth-oauthlib        # --upload
