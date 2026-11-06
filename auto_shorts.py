@@ -66,6 +66,8 @@ def fetch_coupang_api_product(keyword):
         items = data["data"]["productData"]
         # 검색된 상위 상품들의 실제 이미지 URL 리스트 확보
         images = [item["productImage"] for item in items if item.get("productImage")]
+        if not images:
+            raise RuntimeError(f"'{keyword}' 검색 결과에 상품 이미지가 없습니다. 키워드를 확인해주세요.")
         title = items[0]["productName"]
         print(f"쿠팡 API 상품 매칭 성공: {title}")
         return {"title": title, "images": images}
@@ -76,6 +78,42 @@ async def generate_tts(text, output_filename):
     # 음성 깨짐을 방지하기 위해 rate/pitch 변조를 최소화한 정석 설정
     communicate = edge_tts.Communicate(text, "ko-KR-InJoonNeural")
     await communicate.save(output_filename)
+
+FONT_PATH = "NanumGothicBold.ttf"
+SUB_BOX = (60, 1250, 1020, 1520)  # 자막 박스 좌표 (x1, y1, x2, y2)
+SUB_MAX_W = 880                   # 자막 한 줄 최대 폭 (박스 좌우 여백 40px)
+SUB_MAX_H = 210                   # 자막 전체 최대 높이 (골드 라인 아래 영역)
+
+def wrap_text(draw, text, font, max_w):
+    """단어 단위로 줄바꿈하고, 한 단어가 너무 길면 글자 단위로 자름"""
+    lines, line = [], ""
+    for word in text.split():
+        cand = f"{line} {word}".strip()
+        if draw.textlength(cand, font=font) <= max_w:
+            line = cand
+            continue
+        if line:
+            lines.append(line)
+        line = ""
+        for ch in word:
+            if draw.textlength(line + ch, font=font) > max_w and line:
+                lines.append(line)
+                line = ""
+            line += ch
+    return lines + ([line] if line else [])
+
+def fit_subtitle(draw, text):
+    """48px부터 글자 크기를 줄여가며 자막 박스에 들어가는 (폰트, 줄 목록, 줄 높이) 반환"""
+    for size in range(48, 27, -4):
+        try:
+            font = ImageFont.truetype(FONT_PATH, size)
+        except OSError:
+            font = ImageFont.load_default(size)
+        lines = wrap_text(draw, text, font, SUB_MAX_W)
+        line_h = int(size * 1.35)
+        if len(lines) * line_h <= SUB_MAX_H:
+            break
+    return font, lines, line_h
 
 def create_scene_frame(product_img_path, subtitle, scene_idx, output_path):
     """어두운 고급 배경 위에 실제 쿠팡 상품 사진을 큼직하게 배치하고 자막 합성"""
@@ -95,21 +133,16 @@ def create_scene_frame(product_img_path, subtitle, scene_idx, output_path):
     draw.rectangle([78, 218, 1002, 1142], outline=(212, 175, 55), width=4)
     
     # 하단 자막 영역 어두운 박스 및 골드 라인
-    draw.rectangle([60, 1250, 1020, 1520], fill=(10, 12, 18))
+    draw.rectangle(list(SUB_BOX), fill=(10, 12, 18))
     draw.rectangle([100, 1250, 980, 1256], fill=(212, 175, 55))
     
-    font_path = "NanumGothicBold.ttf"
-    try:
-        font = ImageFont.truetype(font_path, 48)
-    except:
-        font = ImageFont.load_default()
-        
-    # 자막 중앙 정렬 계산
-    bbox = draw.textbbox((0, 0), subtitle, font=font)
-    text_w = bbox[2] - bbox[0]
-    x_pos = max(80, (1080 - text_w) // 2)
-    
-    draw.text((x_pos, 1355), subtitle, fill=(255, 255, 255), font=font)
+    # 자막: 박스 폭에 맞춰 줄바꿈 + 필요시 글자 크기 축소, 가로/세로 중앙 정렬
+    font, lines, line_h = fit_subtitle(draw, subtitle)
+    center_y = (SUB_BOX[1] + 6 + SUB_BOX[3]) // 2  # 골드 라인 아래 영역의 중앙
+    y = center_y - len(lines) * line_h // 2
+    for line in lines:
+        draw.text((540, y + line_h // 2), line, fill=(255, 255, 255), font=font, anchor="mm")
+        y += line_h
     canvas.save(output_path)
 
 async def build_shorts_for_product(prod):
@@ -171,7 +204,7 @@ async def build_shorts_for_product(prod):
 async def main():
     os.makedirs("output", exist_ok=True)
     
-    font_path = "NanumGothicBold.ttf"
+    font_path = FONT_PATH
     if not os.path.exists(font_path):
         subprocess.run([
             "curl", "-L", 

@@ -42,22 +42,21 @@ reference the same id the viewer searches for under "집사연구소".
 
 ## 4. Known risks / tech debt (open)
 
-- **Subtitle overflow:** `create_scene_frame` draws one line at 48px with no wrapping; long subtitles
-  (e.g. the CTA) can exceed the 960px box and run off-canvas. Needs width-based wrapping/auto-shrink.
-- **Empty image list:** if the API returns products without `productImage`, `i % len(downloaded_imgs)`
-  raises `ZeroDivisionError`. Guard and fail with a clear message.
 - **No HTTP status check:** `requests.get` result isn't `raise_for_status()`-checked; non-JSON error
   bodies will throw an opaque `JSONDecodeError`.
 - **Image download:** `urllib.request.urlretrieve` sends no User-Agent and has no timeout/retry; CDN may 403.
 - **Global TZ mutation:** `generate_hmac` sets `os.environ["TZ"]`; `time.strftime(..., time.gmtime())` is side-effect free.
 - **Silent font fallback:** `ImageFont.load_default()` can't render Korean → boxes in video. Should fail loudly.
 - **Unpinned deps / old actions:** no `requirements.txt`; `actions/checkout@v3`, `setup-python@v4` are outdated.
+- **Font download in Claude sessions:** the session proxy blocks github.com raw downloads; test with `/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc` copied as `NanumGothicBold.ttf` (CI is unaffected).
 - **Unused param:** `scene_idx` in `create_scene_frame` is unused (comment mentions per-scene crop that isn't implemented).
 
 ## 5. Decision & fix log
 
 Append newest first: `YYYY-MM-DD — what changed — why`.
 
+- 2026-11-06 — subtitles wrap by word (char fallback) and shrink 48→28px to fit the box (`fit_subtitle`) — CTA line overflowed at 48px single-line.
+- 2026-11-06 — `fetch_coupang_api_product` raises a clear error when no product has an image — previously crashed with ZeroDivisionError.
 - (pre-2026-11) — ffmpeg audio forced to AAC 44.1 kHz stereo, concat re-encodes — fixes audio crackle between scenes.
 - (pre-2026-11) — TTS uses default rate/pitch — modified rate/pitch caused distorted voice.
 - (pre-2026-11) — Product images from Coupang Partners API instead of scraping — scraping was blocked.
